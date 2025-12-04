@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zilla-ohlc-1
+  namespace: zilla
+  labels:
+    app.kubernetes.io/instance: zilla-ohlc-1
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: zilla
+    app.kubernetes.io/version: "0.9.173"
+    helm.sh/chart: zilla-0.9.173
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: zilla-ohlc-1
+      app.kubernetes.io/name: zilla
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: zilla-ohlc-1
+        app.kubernetes.io/name: zilla
+    spec:
+      volumes:
+        - name: zilla-cache
+          emptyDir: {}
+        - name: zilla-ohlc-1
+          configMap:
+            name: zilla-ohlc-1
+      containers:
+        - name: zilla
+          image: ghcr.io/aklivity/zilla:0.9.173
+          args:
+            - start
+            - "-v"
+            - "-e"
+            - "-Pzilla.engine.worker.capacity=128"
+          env:
+            - name: ZILLA_VERSION
+              value: "0.9.173"
+          resources:
+            limits:
+              memory: 4Gi
+            requests:
+              memory: 4Gi
+          volumeMounts:
+            - name: zilla-cache
+              mountPath: /var/run/zilla
+            - name: zilla-ohlc-1
+              mountPath: /etc/zilla
+          imagePullPolicy: IfNotPresent
+      restartPolicy: Always
+      dnsPolicy: ClusterFirst
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+      maxSurge: 25%
+  revisionHistoryLimit: 10
+  progressDeadlineSeconds: 600
