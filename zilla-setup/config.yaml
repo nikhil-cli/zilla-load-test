@@ -1,0 +1,79 @@
+  name: zilla-ohlc-prod-1min
+  telemetry:
+    exporters:
+      stdout_log_exporter:
+        type: stdout
+  bindings:
+    north_tcp_server:
+      type: tcp
+      kind: server
+      options:
+        host: 0.0.0.0
+        port:
+          - 7114
+      routes:
+          - when:
+              - port: 7114
+            exit: north_http_server
+    north_http_server:
+      type: http
+      kind: server
+      options:
+        access-control:
+          policy: cross-origin
+      routes:
+        - when:
+            - headers:
+                :scheme: http
+                :path: /events/*
+            - headers:
+                :scheme: http
+                :path: /events
+          exit: north_sse_server
+    north_sse_server:
+      type: sse
+      kind: server
+      exit: north_sse_kafka_mapping
+    north_sse_kafka_mapping:
+      type: sse-kafka
+      kind: proxy
+      routes:
+        - when:
+            - path: /events/key/ohlc_test/{id}
+          with:
+            topic: ohlc_test
+            filters:
+              - key: ${params.id}
+          exit: north_kafka_cache_client
+    north_kafka_cache_client:
+      type: kafka
+      kind: cache_client
+      exit: south_kafka_cache_server
+    south_kafka_cache_server:
+      type: kafka
+      kind: cache_server
+      options:
+        bootstrap: 
+          - ohlc_test
+        topics:
+          - name: ohlc_test
+            defaultOffset: live
+      exit: south_kafka_client
+    south_kafka_client:
+      type: kafka
+      kind: client
+      options:
+        servers:
+          - kafka1:9092
+          - kafka2:9092
+          - kafka3:9092
+      exit: south_tcp_client
+    south_tcp_client:
+      type: tcp
+      kind: client
+      options:
+        host: kafka1
+        port: 9092
+      routes:
+        - when:
+            - cidr: 0.0.0.0/0
