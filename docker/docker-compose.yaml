@@ -1,0 +1,42 @@
+services:
+  zilla-init:
+    image: alpine:latest
+    volumes:
+      - zilla-run:/var/run/zilla
+    command: sh -c "rm -rf /var/run/zilla/* && echo 'Cleaned zilla-run volume'"
+
+  zilla:
+    image: ghcr.io/aklivity/zilla:latest
+    # restart: unless-stopped
+    hostname: zilla.examples.dev
+    depends_on:
+      zilla-init:
+        condition: service_completed_successfully
+    ports:
+      - "7143:7143"
+      - "7114:7114"
+    healthcheck:
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      test: ["CMD", "bash", "-c", "echo -n '' > /dev/tcp/127.0.0.1/7143"]
+    environment:
+      ZILLA_INCUBATOR_ENABLED: "true"
+      KEYSTORE_PASSWORD: generated
+    volumes:
+      - ./zilla-h6.yaml:/etc/zilla/zilla.yaml
+      - ./etc/tls:/etc/zilla/tls
+      - ./www:/var/www
+      - zilla-run:/var/run/zilla
+    command: start -v -e
+
+  zilla-explorer:
+    image: alpine:latest
+    volumes:
+      - zilla-run:/data/zilla-run:ro
+    command: sleep infinity
+    profiles:
+      - tools
+
+volumes:
+  zilla-run:

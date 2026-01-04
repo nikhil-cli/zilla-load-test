@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <title>Zilla SSE Client (HTTP/2)</title>
+    <script>
+        // Option 1: Using fetch() API for HTTP/2 SSE support
+        async function connectWithFetch() {
+            const endpoint = document.getElementById('location').value;
+            const messagesDiv = document.getElementById('messages');
+            
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'text/event-stream',
+                        'Cache-Control': 'no-cache',
+                    },
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                // Log protocol version (if available)
+                console.log('Connected via:', response.type);
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    
+                    if (done) {
+                        console.log('Stream closed');
+                        break;
+                    }
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // Keep incomplete line in buffer
+                    
+                    let currentEvent = { data: '', id: '', event: 'message' };
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            currentEvent.data += line.substring(6) + '\n';
+                        } else if (line.startsWith('id: ')) {
+                            currentEvent.id = line.substring(4);
+                        } else if (line.startsWith('event: ')) {
+                            currentEvent.event = line.substring(7);
+                        } else if (line === '') {
+                            if (currentEvent.data) {
+                                // Display message
+                                const text = document.createTextNode(
+                                    `[${currentEvent.event}] ${currentEvent.data.trim()}`
+                                );
+                                const line = document.createElement("p");
+                                line.appendChild(text);
+                                messagesDiv.insertBefore(line, messagesDiv.firstChild);
+                                
+                                currentEvent = { data: '', id: '', event: 'message' };
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Connection error:', err);
+                const errorMsg = document.createTextNode(`Error: ${err.message}`);
+                const line = document.createElement("p");
+                line.style.color = 'red';
+                line.appendChild(errorMsg);
+                messagesDiv.insertBefore(line, messagesDiv.firstChild);
+            }
+        }
+
+        // Option 2: Fallback to EventSource (HTTP/1.1 only)
+        function connectWithEventSource() {
+            const endpoint = document.getElementById('location').value;
+            const messagesDiv = document.getElementById('messages');
+            
+            const es = new EventSource(endpoint);
+            
+            es.onopen = () => {
+                console.log('EventSource connected (HTTP/1.1)');
+            };
+            
+            es.onmessage = (evt) => {
+                const text = document.createTextNode(evt.data);
+                const line = document.createElement("p");
+                line.appendChild(text);
+                messagesDiv.insertBefore(line, messagesDiv.firstChild);
+            };
+            
+            es.onerror = (err) => {
+                console.error('EventSource error:', err);
+            };
+            
+            // Store reference to close later
+            window.currentEventSource = es;
+        }
+
+        function disconnect() {
+            if (window.currentEventSource) {
+                window.currentEventSource.close();
+                window.currentEventSource = null;
+            }
+        }
+    </script>
+    <style type="text/css">
+        .row {
+            overflow: hidden;
+            padding: 10px;
+            width: 300px;
+        }
+        .col {
+            float: left;
+            width: 50%
+        }
+        #messages {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+        #messages p {
+            margin: 5px 0;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="col">
+        <h3>SSE Client (HTTP/2 via fetch)</h3>
+        
+        <div class="row">
+            <label for="location">Endpoint</label>
+            <input id="location"
+                   value="http://localhost:7114/events/ohlc_test/test_1"
+                   style="width: 300px;">
+        </div>
+        
+        <div class="row">
+            <button onclick="connectWithFetch()">Connect (HTTP/2 - fetch)</button>
+            <button onclick="connectWithEventSource()">Connect (HTTP/1.1 - EventSource)</button>
+            <button onclick="disconnect()">Disconnect</button>
+        </div>
+
+        <h3>Messages</h3>
+        <div id="messages"></div>
+    </div>
+</body>
+</html>
